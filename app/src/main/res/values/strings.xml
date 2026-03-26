@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">AlipayAccDemo</string>
+    <string name="accessibility_service_description">收款資訊偵測輔助服務</string>
+</resources>
