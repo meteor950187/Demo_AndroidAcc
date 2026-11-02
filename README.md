@@ -1,6 +1,6 @@
 # Android 原生 App 爬蟲 Demo｜Accessibility Service
 
-在不需 Root、不修改目標 App 的原生 Android 環境下，透過無障礙服務（Accessibility Service）取得 App 的畫面節點物件，讀取文字與 UI 結構，再由本專案的程式整理並序列化為 JSON，提供外部程式進行資料擷取與流程判斷。
+在不需 Root、不修改目標 App 的原生 Android 環境下，透過無障礙服務（Accessibility Service）讀取目標 App 提供的節點文字、內容描述與畫面階層，讓外部程式能進一步擷取資料與判斷頁面狀態。
 
 本專案以支付寶為目標案例，展示 Android App 爬蟲的裝置端核心：**從原生 App 畫面取得可供程式處理的結構化資料**。
 
@@ -21,20 +21,9 @@
 - UI 結構與位置：子節點階層、節點數量、畫面座標範圍
 - 元件狀態：是否可見、可點擊、可捲動、已選取等
 
-接著由 `AlipayAccService` 呼叫 `Json.encodeToString(...)`，將 `NodeSnapshot` 序列化為 JSON 字串，讓外部程式能依節點識別與階層分析畫面內容。**無障礙節點樹是本 Demo 的主要資料來源**；截圖則提供另一種畫面回傳方式。
+文字欄位直接取自 `node.text?.toString()`，內容描述取自 `node.contentDescription?.toString()`，並透過 `children` 保留節點階層。外部程式可結合這些文字、ViewId 與位置資訊分析頁面內容。
 
-#### 資料格式與轉換層次
-
-| 階段 | 資料型態 | 對應實作 |
-| --- | --- | --- |
-| 系統 API 取得畫面節點 | `AccessibilityNodeInfo` 物件及其子節點 | `rootInActiveWindow`、`getChild()` |
-| 本專案整理節點資料 | `NodeSnapshot` Kotlin 資料物件 | `AccNodeSerializer.serialize(...)` |
-| 本專案編碼擷取結果 | JSON 字串 | `Json.encodeToString(NodeSnapshot.serializer(), snapshot)` |
-| WebSocket 回覆 | 外層 JSON 訊息，`Data` 欄位存放上述 JSON 字串 | `put("Data", snapshotJson)`、`sendToServer(...)` |
-
-無障礙 API 在此提供的是節點物件；JSON 是本專案選用的傳輸格式。Android 的 [UI Automator `dumpWindowHierarchy()`](https://developer.android.com/reference/androidx/test/uiautomator/UiDevice#dumpWindowHierarchy(java.io.File)) 則可將視窗階層匯出成 XML，本專案目前未使用該匯出方式。
-
-Server 收到 `GetCurrentText` 或成功的 `WaitViewId` 回覆時，需先解析外層 JSON，再將 `Data` 字串解析為節點資料。
+**無障礙節點是本 Demo 的主要資料來源**。實際能取得的文字取決於執行時的目標頁面及其提供的節點資訊。截圖則提供另一種畫面回傳方式。
 
 ### 2. 等待目標節點，銜接資料擷取流程
 
@@ -61,7 +50,7 @@ Accessibility Service 監聽畫面變化，更新節點樹
     ↓
 等待指定 ViewId，或取得目前畫面節點樹
     ↓
-節點資料序列化為 JSON，透過 WebSocket 回傳
+將擷取到的節點文字、屬性與階層透過 WebSocket 回傳
 ```
 
 ## Demo 功能與範圍
@@ -70,7 +59,7 @@ Accessibility Service 監聽畫面變化，更新節點樹
 | --- | --- |
 | QR Code 配對 | 讀取 Server 提供的 Token 與 WebSocket 位址 |
 | 開啟目標頁面 | 透過 `Intent.ACTION_VIEW` 開啟 `alipays://` 等 URL Scheme |
-| 畫面資料擷取 | 將目前快取的作用中視窗節點樹序列化為 JSON |
+| 畫面資料擷取 | 讀取目前作用中視窗的節點文字、內容描述、屬性與階層 |
 | 等待指定節點 | 輪詢 ViewId，找到後回傳節點資料，逾時回覆錯誤 |
 | 螢幕擷取 | 透過 MediaProjection 與前景服務取得畫面，以 Base64 回傳 |
 | 連線管理 | WebSocket 連線、認證與斷線重連 |
@@ -147,9 +136,11 @@ App 需使用相機、網路、通知與前景服務相關權限；無障礙服�
 | Action | 用途 | 必要參數 |
 | --- | --- | --- |
 | `Open` | 開啟指定 URL Scheme | `Method: "UrlSchema"`、`Url` |
-| `GetCurrentText` | 取得目前畫面的節點樹 JSON | `Method: ""` |
+| `GetCurrentText` | 取得目前畫面的節點文字、屬性與階層 | `Method: ""` |
 | `WaitViewId` | 等待並取得指定節點資料 | `Method: ""`、`ViewId`、正整數 `WaitSeconds` |
 | `Capture` | 取得螢幕截圖 Base64 | `Method: ""` |
+
+通訊格式使用 JSON。`GetCurrentText` 與成功的 `WaitViewId` 回覆，會將節點資料編碼為 JSON 字串並放入外層回覆的 `Data` 欄位；這是傳輸封裝方式，節點文字的內容仍以目標 App 提供的值為準。
 
 每個指令皆需帶入 `GUID`，供請求與回覆配對。例如：
 
